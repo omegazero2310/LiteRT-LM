@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
 
     // 2. Create Engine Settings
     auto engine_settings_result = EngineSettings::CreateDefault(
-        std::move(model_assets), Backend::CPU);
+        std::move(model_assets), Backend::GPU);
     if (!engine_settings_result.ok()) {
         std::cerr << "Failed to create engine settings: " << engine_settings_result.status().message() << std::endl;
         return 1;
