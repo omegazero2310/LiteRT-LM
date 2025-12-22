@@ -172,7 +172,11 @@ cc_library(
 
 cc_binary(
     name = "litert_lm_main",
-    srcs = ["litert_lm_main.cc"],
+    srcs = [
+		"litert_lm_main.cc",
+        "httplib.h",  # Add this
+        "json.hpp",   # Add this
+	],
     additional_linker_inputs = select({
         "@platforms//os:windows": [
             "@litert//litert/c:windows_exported_symbols.def",
@@ -193,7 +197,8 @@ cc_binary(
     }) + select({
         "@platforms//os:android": ["-lEGL", "-lGLESv3"],
         "//conditions:default": [],
-    }),
+    }	,
+		"-lpthread"),
     deps = [
         ":engine_interface",
         ":engine_settings",
@@ -214,6 +219,7 @@ cc_binary(
         "//runtime/conversation:io_types",
         "//runtime/executor:executor_settings_base",
         "//runtime/util:litert_status_util",
+        "@com_google_absl//absl/flags:parse",
     ] + select({
         "//conditions:default": ["//runtime/core:engine_impl"],
     }),

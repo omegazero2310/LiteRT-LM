@@ -1,34 +1,19 @@
-// Copyright 2025 The ODML Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// ODML pipeline to execute or benchmark LLM graph on device.
-//
-// The pipeline does the following
-// 1) Read the corresponding parameters, weight and model file paths.
-// 2) Construct a graph model with the setting.
-// 3) Execute model inference and generate the output.
-
-#include <fstream>
+// runtime/engine/litert_lm_main.cc
 #include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
+#include <vector>
+#include <fstream>
+#include <sstream>
 #include <utility>
 #include <variant>
 
+// Add these two single-header libraries to your project
+#include "httplib.h"
+// Don't include json.hpp separately - use nlohmann from includes
 #include "absl/base/log_severity.h"  // from @com_google_absl
 #include "absl/flags/flag.h"  // from @com_google_absl
+#include "absl/flags/parse.h"  // from @com_google_absl
 #include "absl/functional/any_invocable.h"  // from @com_google_absl
 #include "absl/log/absl_check.h"  // from @com_google_absl
 #include "absl/log/absl_log.h"  // from @com_google_absl
@@ -46,122 +31,141 @@
 #include "runtime/executor/executor_settings_base.h"
 #include "runtime/util/status_macros.h"
 
-ABSL_FLAG(std::string, backend, "gpu",
-          "Executor backend to use for LLM execution (cpu, gpu, etc.)");
-ABSL_FLAG(std::string, model_path, "", "Model path to use for LLM execution.");
-ABSL_FLAG(std::string, input_prompt,
-          "",
-          "Input prompt to use for testing LLM execution.");
-ABSL_FLAG(std::string, input_prompt_file, "", "File path to the input prompt.");
-
-namespace {
+// Define flags (keep necessary ones)
+ABSL_FLAG(std::string, model_path, "", "Path to the .litertlm model file.");
+ABSL_FLAG(std::string, tokenizer_path, "", "Path to the tokenizer (optional if embedded).");
+ABSL_FLAG(int, port, 11434, "Port to run the server on.");
 
 using ::litert::lm::Backend;
 using ::litert::lm::Conversation;
 using ::litert::lm::ConversationConfig;
 using ::litert::lm::Engine;
 using ::litert::lm::EngineSettings;
+using ::litert::lm::InputText;
 using ::litert::lm::InputData;
 using ::litert::lm::JsonMessage;
 using ::litert::lm::Message;
 using ::litert::lm::ModelAssets;
-using ::nlohmann::json;
-
-absl::AnyInvocable<void(absl::StatusOr<Message>)> CreateMessageCallback() {
-  return [](absl::StatusOr<Message> message) {
-    if (!message.ok()) {
-      std::cout << "Error: " << message.status() << std::endl;
-      return;
-    }
-    if (std::holds_alternative<JsonMessage>(*message)) {
-      const auto& json_message = std::get<JsonMessage>(*message);
-      if (json_message.is_null()) {
-        std::cout << std::endl << std::flush;
-        return;
-      }
-      for (const auto& content : json_message["content"]) {
-        std::cout << content["text"].get<std::string>();
-      }
-      std::cout << std::flush;
-    }
-  };
-}
-
-// Gets the input prompt from the command line flag or file.
-std::string GetInputPrompt() {
-  const std::string input_prompt = absl::GetFlag(FLAGS_input_prompt);
-  const std::string input_prompt_file = absl::GetFlag(FLAGS_input_prompt_file);
-  if (!input_prompt.empty() && !input_prompt_file.empty()) {
-    ABSL_LOG(FATAL) << "Only one of --input_prompt and --input_prompt_file can "
-                       "be specified.";
-  }
-  if (!input_prompt.empty()) {
-    return input_prompt;
-  }
-  if (!input_prompt_file.empty()) {
-    std::ifstream file(input_prompt_file);
-    if (!file.is_open()) {
-      std::cerr << "Error: Could not open file " << input_prompt_file
-                << std::endl;
-      return "";
-    }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-  }
-  // If no input prompt is provided, use the default prompt.
-  return "What is the tallest building in the world?";
-}
-
-absl::Status MainHelper(int argc, char** argv) {
-  // Overrides the default for FLAGS_minloglevel to error.
-  absl::SetMinLogLevel(absl::LogSeverityAtLeast::kError);
-  absl::SetStderrThreshold(absl::LogSeverityAtLeast::kFatal);
-
-  const std::string model_path = absl::GetFlag(FLAGS_model_path);
-  if (model_path.empty()) {
-    return absl::InvalidArgumentError("Model path is empty.");
-  }
-  ASSIGN_OR_RETURN(ModelAssets model_assets,  // NOLINT
-                   ModelAssets::Create(model_path));
-  auto backend_str = absl::GetFlag(FLAGS_backend);
-  ASSIGN_OR_RETURN(Backend backend,
-                   litert::lm::GetBackendFromString(backend_str));
-  ASSIGN_OR_RETURN(
-      EngineSettings engine_settings,
-      EngineSettings::CreateDefault(std::move(model_assets), backend));
-  // Enable benchmark by default.
-  engine_settings.GetMutableBenchmarkParams() =
-      litert::lm::proto::BenchmarkParams();
-
-  // Create the engine.
-  ASSIGN_OR_RETURN(auto engine, litert::lm::Engine::CreateEngine(
-                                    std::move(engine_settings)));
-
-  // Create the conversation.
-  std::unique_ptr<Conversation> conversation;
-  auto session_config = litert::lm::SessionConfig::CreateDefault();
-  ASSIGN_OR_RETURN(
-      auto conversation_config,
-      ConversationConfig::CreateFromSessionConfig(*engine, session_config));
-  ASSIGN_OR_RETURN(conversation,
-                   Conversation::Create(*engine, conversation_config));
-
-  // Prepare the message to send.
-  json content_list = json::array();
-  const std::string input_prompt = GetInputPrompt();
-  std::cout << "input_prompt: " << input_prompt << std::endl;
-  content_list.push_back({{"type", "text"}, {"text", input_prompt}});
-
-  // Print the benchmark info.
-  auto benchmark_info = conversation->GetBenchmarkInfo();
-  std::cout << std::endl << *benchmark_info << std::endl;
-  return absl::OkStatus();
-}
-
-}  // namespace
+using ::litert::lm::Responses;
+using ::litert::lm::SessionConfig;
+using namespace litert::lm;
 
 int main(int argc, char** argv) {
-  ABSL_CHECK_OK(MainHelper(argc, argv));
-  return 0;
+    absl::ParseCommandLine(argc, argv);
+
+    std::string model_path = absl::GetFlag(FLAGS_model_path);
+    if (model_path.empty()) {
+        std::cerr << "Error: --model_path is required." << std::endl;
+        return 1;
+    }
+
+    // 1. Create Model Assets
+    std::cout << "Loading model from: " << model_path << " ..." << std::endl;
+    
+    auto model_assets_result = ModelAssets::Create(model_path);
+    if (!model_assets_result.ok()) {
+        std::cerr << "Failed to create model assets: " << model_assets_result.status().message() << std::endl;
+        return 1;
+    }
+    auto model_assets = std::move(model_assets_result.value());
+
+    // 2. Create Engine Settings
+    auto engine_settings_result = EngineSettings::CreateDefault(
+        std::move(model_assets), Backend::CPU);
+    if (!engine_settings_result.ok()) {
+        std::cerr << "Failed to create engine settings: " << engine_settings_result.status().message() << std::endl;
+        return 1;
+    }
+    auto engine_settings = std::move(engine_settings_result.value());
+
+    // 3. Create the Engine
+    auto engine_result = Engine::CreateEngine(std::move(engine_settings));
+    if (!engine_result.ok()) {
+        std::cerr << "Failed to create engine: " << engine_result.status().message() << std::endl;
+        return 1;
+    }
+    auto engine = std::move(engine_result.value());
+
+    std::cout << "Model loaded successfully. Starting server on port " << absl::GetFlag(FLAGS_port) << "..." << std::endl;
+
+    // 4. Setup HTTP Server
+    httplib::Server svr;
+
+    // POST /api/chat - Ollama Compatible Endpoint
+    svr.Post("/api/chat", [&](const httplib::Request& req, httplib::Response& res) {
+        try {
+            auto body = nlohmann::json::parse(req.body);
+            bool stream = body.value("stream", false); // Streaming not implemented in this simple example
+            
+            if (!body.contains("messages")) {
+                res.status = 400;
+                res.set_content("Missing 'messages' field", "text/plain");
+                return;
+            }
+
+            // Create a new session for this request (Stateless API behavior)
+            auto session_config = SessionConfig::CreateDefault();
+            
+            auto session_result = engine->CreateSession(session_config);
+            if (!session_result.ok()) {
+                res.status = 500;
+                res.set_content("Failed to create session", "text/plain");
+                return;
+            }
+            auto session = std::move(session_result.value());
+
+            auto messages = body["messages"];
+            std::string prompt;
+
+            // Extract the last user message
+            if (!messages.empty()) {
+                prompt = messages.back().value("content", "");
+            }
+
+            // Execute Inference using GenerateContent
+            // Build inputs vector manually to avoid copy constructor issues
+            std::vector<InputData> inputs;
+            inputs.emplace_back(InputText(prompt));
+            
+            auto result = session->GenerateContent(std::move(inputs)); 
+            
+            if (!result.ok()) {
+                res.status = 500;
+                res.set_content(std::string(result.status().message()), "text/plain");
+                return;
+            }
+
+            // Extract response text from Responses
+            // Responses has operator<< overload, so convert to string
+            std::ostringstream oss;
+            oss << result.value();
+            std::string last_response = oss.str();
+
+            // Format Response (Ollama format)
+            nlohmann::json response_json = {
+                {"model", "litert-model"},
+                {"created_at", "2023-01-01T00:00:00Z"}, // Dummy timestamp
+                {"message", {
+                    {"role", "assistant"},
+                    {"content", last_response}
+                }},
+                {"done", true}
+            };
+
+            res.set_content(response_json.dump(), "application/json");
+
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(e.what(), "text/plain");
+        }
+    });
+
+    // Health check
+    svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
+        res.set_content("LiteRT-LM Server is running", "text/plain");
+    });
+
+    svr.listen("0.0.0.0", absl::GetFlag(FLAGS_port));
+
+    return 0;
 }
