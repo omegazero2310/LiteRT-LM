@@ -46,3 +46,4 @@ project.assets.json
 *.log
 *.cache
 csharp/runtimes/linux-x64/native/liblitertlm_csharp.so
+csharp/example/ExampleLiteRTLMCSharp/output.txt
