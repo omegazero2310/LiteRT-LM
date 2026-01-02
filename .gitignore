@@ -1,2 +1,48 @@
 /MODULE.bazel.lock
 /bazel-*
+
+# C# / Visual Studio / .NET
+# Build outputs
+[Bb]in/
+[Oo]bj/
+**/bin/
+**/obj/
+
+# Visual Studio & VS Code
+.vs/
+.vscode/
+
+# IDEs
+.idea/
+
+# User-specific files
+*.user
+*.suo
+*.userprefs
+
+# Mono
+*.pidb
+*.booproj
+
+# ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+packages/
+
+# Generated MSBuild/NuGet files
+project.assets.json
+*.nuget.g.props
+*.nuget.g.targets
+
+# Debug / Release folders
+**/Debug/
+**/Release/
+
+# Symbols and logs
+*.pdb
+*.log
+*.cache
+csharp/runtimes/linux-x64/native/liblitertlm_csharp.so

@@ -45,6 +45,17 @@ dotnet_register_toolchains(name = "dotnet", dotnet_version = "8.0.100")
 
 ### 2. Build the Library
 
+> Note: In order to run on GPU on all platforms, we need to take extra steps:
+>
+> 1. Add `--define=litert_link_capi_so=true`
+  `--define=resolve_symbols_in_exec=false` in the build command.
+> 2. `mkdir -p <test_dir>; cp <your litert_lm_main> <test_dir>; cp ./prebuilt/<your OS>/<shared libaries> <test_dir>/`
+ and make sure the prebuilt .so/.dll/.dylib files are in the same directory as
+  `litert_lm_main` binary
+> 3. Running GPU on Windows needs DirectXShaderCompiler. See
+ [this Note](#windows_gpu) for more details.
+
+
 ```bash
 # Build the C++ native library
 bazel build //csharp:litertlm_csharp
@@ -54,6 +65,17 @@ bazel build //csharp:LiteRtLm
 
 # Run examples
 bazel run //csharp:LiteRtLm_Example
+
+# If the example program throw exception (dll not found) do this
+# Install the tool
+sudo apt update && sudo apt install patchelf
+
+# Set the search path (RPATH) for the main library
+# The single quotes around $ORIGIN are CRITICAL so the shell doesn't change it
+patchelf --set-rpath '$ORIGIN' liblitertlm_csharp.so
+
+# Now verify it with ldd
+ldd liblitertlm_csharp.so
 ```
 
 ### 3. Using in Your Project
