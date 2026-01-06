@@ -27,13 +27,13 @@ namespace Google.AI.Edge.LiteRtLm.Examples
         public static void Main(string[] args)
         {
             // Set logging level
-            Engine.SetMinLogSeverity(LogSeverity.Verbose);
+            Engine.SetMinLogSeverity(LogSeverity.Info);
 
             // Example 1: Simple text generation with Session
             SimpleTextGeneration();
 
             // Example 2: Streaming text generation
-            StreamingTextGeneration(); // Commented out - GPU backend has issues
+            StreamingTextGeneration(); // Commented out - cpu backend has issues
 
             // Example 3: Multi-turn conversation
             MultiTurnConversation();
@@ -53,7 +53,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             {
                 using var engine = new Engine(
                     modelPath: modelPath,
-                    backend: "gpu",
+                    backend: "cpu",
                     maxNumTokens: 2048);
 
                 using var session = engine.CreateSession(
@@ -85,10 +85,10 @@ namespace Google.AI.Edge.LiteRtLm.Examples
 
             try
             {
-                // Use gpu backend instead of GPU to avoid compilation errors
+                // Use cpu backend instead of cpu to avoid compilation errors
                 using var engine = new Engine(
                     modelPath: modelPath,
-                    backend: "gpu");
+                    backend: "cpu");
 
                 using var session = engine.CreateSession();
 
@@ -137,7 +137,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             {
                 using var engine = new Engine(
                     modelPath: modelPath,
-                    backend: "gpu",
+                    backend: "cpu",
                     enableBenchmark: true);
 
                 // Fixed: Remove system instruction for now, or format it correctly
@@ -182,7 +182,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             {
                 using var engine = new Engine(
                     modelPath: modelPath,
-                    backend: "gpu");
+                    backend: "cpu");
 
                 string toolsJson = @"[
                     {
@@ -250,8 +250,8 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             {
                 using var engine = new Engine(
                     modelPath: "path/to/multimodal_model.tflite",
-                    backend: "gpu",
-                    visionBackend: "gpu");
+                    backend: "cpu",
+                    visionBackend: "cpu");
 
                 using var session = engine.CreateSession();
 
@@ -286,7 +286,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             {
                 using var engine = new Engine(
                     modelPath: "/home/nguyenan/Downloads/gemma-3n-E4B-it-int4.litertlm",
-                    backend: "gpu");
+                    backend: "cpu");
 
                 using var session = engine.CreateSession();
 
@@ -327,7 +327,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             {
                 using var engine = new Engine(
                     modelPath: "/home/nguyenan/Downloads/gemma-3n-E4B-it-int4.litertlm",
-                    backend: "gpu");
+                    backend: "cpu");
 
                 using var session = engine.CreateSession();
 

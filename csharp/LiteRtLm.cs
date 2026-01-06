@@ -121,8 +121,7 @@ namespace Google.AI.Edge.LiteRtLm
 
         // Error handling
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        [return: MarshalAs(UnmanagedType.LPUTF8Str)]
-        internal static extern string LiteRtLm_GetLastErrorMessage();
+        internal static extern int LiteRtLm_GetLastErrorCode();
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern IntPtr LiteRtLm_GetLastErrorMessage();
@@ -132,14 +131,14 @@ namespace Google.AI.Edge.LiteRtLm
         internal static extern void LiteRtLm_SetMinLogSeverity(int severity);
 
         // Engine
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         internal static extern IntPtr LiteRtLm_CreateEngine(
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string modelPath,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string backend,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string visionBackend,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string audioBackend,
+            string modelPath,
+            string backend,
+            string visionBackend,
+            string audioBackend,
             int maxNumTokens,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string cacheDir,
+            string cacheDir,
             bool enableBenchmark);
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -186,7 +185,7 @@ namespace Google.AI.Edge.LiteRtLm
         internal static extern void LiteRtLm_CancelProcess(IntPtr session);
 
         // Conversation
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         internal static extern IntPtr LiteRtLm_CreateConversation(
             IntPtr engine,
             int topK,
@@ -194,22 +193,22 @@ namespace Google.AI.Edge.LiteRtLm
             double temperature,
             int seed,
             bool useSampler,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string systemMessageJson,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string toolsJson,
+            string systemMessageJson,
+            string toolsJson,
             bool enableConstrainedDecoding);
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern void LiteRtLm_DeleteConversation(IntPtr conversation);
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         internal static extern IntPtr LiteRtLm_SendMessage(
             IntPtr conversation,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string messageJson);
+            string messageJson);
 
-        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         internal static extern bool LiteRtLm_SendMessageAsync(
             IntPtr conversation,
-            [MarshalAs(UnmanagedType.LPUTF8Str)] string messageJson,
+            string messageJson,
             MessageCallback onMessage,
             CompletionCallback onComplete,
             ErrorCallback onError);
