@@ -532,3 +532,6 @@ test:bulk_test_cpu --build_tests_only
 
 # TODO: b/397625618 Enable bzlmod
 common --noenable_bzlmod
+
+# TODO: Fix the longpath issue on the windows
+startup --output_user_root=D:/_bzl
