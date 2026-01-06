@@ -40,6 +40,16 @@
 #include "tflite/logger.h"
 #include "tflite/minimal_logging.h"
 
+// Windows-specific includes
+#if defined(_WIN32)
+#include <io.h>
+#define ACCESS _access
+#define F_OK 0
+#else
+#include <unistd.h>
+#define ACCESS access
+#endif
+
 #if defined(_WIN32)
 #define LITERTLM_EXPORT __declspec(dllexport)
 #else
@@ -82,6 +92,18 @@ void SetLastError(int code, const std::string& message) {
 void ClearLastError() {
   g_last_error.code = 0;
   g_last_error.message[0] = '\0';
+}
+
+// Better cross-platform file existence check
+bool FileExists(const char* path) {
+#if defined(_WIN32)
+  // On Windows, use _access_s for better compatibility
+  #include <io.h>
+  return _access_s(path, 0) == 0;
+#else
+  struct stat buffer;
+  return (stat(path, &buffer) == 0);
+#endif
 }
 
 // Callback function pointer types for C#
@@ -152,6 +174,26 @@ LITERTLM_EXPORT void LiteRtLm_SetMinLogSeverity(int log_severity) {
   tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(tflite_log_severity);
 }
 
+// Optional: Add a debug function to test path reception
+LITERTLM_EXPORT const char* LiteRtLm_TestPathEcho(const char* path) {
+  if (!path) return nullptr;
+  
+  // Log what we received
+  ABSL_LOG(INFO) << "Path echo test: [" << path << "]";
+  ABSL_LOG(INFO) << "Path length: " << strlen(path);
+  
+  // Check if file exists
+  bool exists = FileExists(path);
+  ABSL_LOG(INFO) << "File exists: " << (exists ? "YES" : "NO");
+  
+  // Return a status message
+  std::string result = std::string("Received: ") + path + 
+                      " | Exists: " + (exists ? "YES" : "NO");
+  char* output = new char[result.length() + 1];
+  strcpy(output, result.c_str());
+  return output;
+}
+
 // Engine management
 LITERTLM_EXPORT void* LiteRtLm_CreateEngine(
     const char* model_path,
@@ -164,13 +206,32 @@ LITERTLM_EXPORT void* LiteRtLm_CreateEngine(
   
   ClearLastError();
 
-  // Check if file exists
-  struct stat buffer;
-  if (stat(model_path, &buffer) != 0) {
-    SetLastError(static_cast<int>(absl::StatusCode::kNotFound),
-                 "Model file not found: " + std::string(model_path));
+  // Enhanced logging for debugging
+  ABSL_LOG(INFO) << "LiteRtLm_CreateEngine called";
+  ABSL_LOG(INFO) << "Model path received: [" << (model_path ? model_path : "NULL") << "]";
+  ABSL_LOG(INFO) << "Backend: [" << (backend ? backend : "NULL") << "]";
+
+  if (!model_path || strlen(model_path) == 0) {
+    SetLastError(static_cast<int>(absl::StatusCode::kInvalidArgument),
+                 "Model path is null or empty");
     return nullptr;
   }
+
+  // Check file existence with improved method
+  if (!FileExists(model_path)) {
+    std::string error_msg = "Model file not found: ";
+    error_msg += model_path;
+    
+    // Add more debugging info
+    ABSL_LOG(ERROR) << error_msg;
+    ABSL_LOG(ERROR) << "Path length: " << strlen(model_path);
+    ABSL_LOG(ERROR) << "First char: " << (int)model_path[0];
+    
+    SetLastError(static_cast<int>(absl::StatusCode::kNotFound), error_msg);
+    return nullptr;
+  }
+
+  ABSL_LOG(INFO) << "File exists, proceeding with model loading...";
 
   auto model_assets = ModelAssets::Create(model_path);
   if (!model_assets.ok()) {

@@ -23,6 +23,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
     /// </summary>
     public class Example
     {
+        private const string modelPath = "D:/litertlm_model/gemma-3n-E4B-it-int4.litertlm";
         public static void Main(string[] args)
         {
             // Set logging level
@@ -51,7 +52,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             try
             {
                 using var engine = new Engine(
-                    modelPath: "/home/nguyenan/Downloads/gemma-3n-E4B-it-int4.litertlm",
+                    modelPath: modelPath,
                     backend: "gpu",
                     maxNumTokens: 2048);
 
@@ -86,7 +87,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             {
                 // Use gpu backend instead of GPU to avoid compilation errors
                 using var engine = new Engine(
-                    modelPath: "/home/nguyenan/Downloads/gemma-3n-E4B-it-int4.litertlm",
+                    modelPath: modelPath,
                     backend: "gpu");
 
                 using var session = engine.CreateSession();
@@ -135,7 +136,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             try
             {
                 using var engine = new Engine(
-                    modelPath: "/home/nguyenan/Downloads/gemma-3n-E4B-it-int4.litertlm",
+                    modelPath: modelPath,
                     backend: "gpu",
                     enableBenchmark: true);
 
@@ -180,7 +181,7 @@ namespace Google.AI.Edge.LiteRtLm.Examples
             try
             {
                 using var engine = new Engine(
-                    modelPath: "/home/nguyenan/Downloads/gemma-3n-E4B-it-int4.litertlm",
+                    modelPath: modelPath,
                     backend: "gpu");
 
                 string toolsJson = @"[
