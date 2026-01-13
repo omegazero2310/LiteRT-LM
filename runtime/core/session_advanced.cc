@@ -19,12 +19,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"  // from @com_google_absl
 #include "absl/container/flat_hash_set.h"  // from @com_google_absl
 #include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"  // from @com_google_absl
+#include "absl/log/log.h"  // from @com_google_absl
 #include "absl/memory/memory.h"  // from @com_google_absl
 #include "absl/status/status.h"  // from @com_google_absl
 #include "absl/status/statusor.h"  // from @com_google_absl
@@ -223,6 +226,53 @@ absl::StatusOr<Responses> SessionAdvanced::RunTextScoring(
   return absl::UnimplementedError("RunTextScoring is not implemented.");
 }
 
+absl::StatusOr<Responses> SessionAdvanced::GenerateContent(
+    const std::vector<InputData>& contents) {
+  RETURN_IF_ERROR(RunPrefill(contents));
+  return RunDecode();
+}
+
+absl::Status SessionAdvanced::GenerateContentStream(
+    const std::vector<InputData>& contents,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback) {
+  return GenerateContentStream(contents, std::move(callback),
+                               DecodeConfig::CreateDefault());
+}
+
+absl::Status SessionAdvanced::GenerateContentStream(
+    const std::vector<InputData>& contents,
+    absl::AnyInvocable<void(absl::StatusOr<Responses>)> callback,
+    const DecodeConfig& decode_config) {
+  absl::AnyInvocable<void(absl::StatusOr<Responses>)> prefill_callback =
+      [this, decode_config,
+       stream_callback = std::move(callback)](
+          absl::StatusOr<Responses> prefill_responses) mutable {
+        if (!prefill_responses.ok()) {
+          stream_callback(prefill_responses.status());
+          return;
+        }
+        if (prefill_responses->GetTaskState() == TaskState::kDone) {
+          std::thread([this, stream_callback = std::move(stream_callback),
+                       decode_config]() mutable {
+            auto decode_task_controller =
+                RunDecodeAsync(std::move(stream_callback), decode_config);
+            if (!decode_task_controller.ok()) {
+              ABSL_LOG(ERROR) << "Failed to start decode task: "
+                              << decode_task_controller.status();
+            }
+          }).detach();
+        } else if (IsTaskEndState(prefill_responses->GetTaskState())) {
+          stream_callback(absl::CancelledError(
+              "Prefill task finished in cancelled state."));
+        }
+      };
+
+  ASSIGN_OR_RETURN(auto task_controller,
+                   RunPrefillAsync(contents, std::move(prefill_callback)));
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<BenchmarkInfo> SessionAdvanced::GetBenchmarkInfo() {
   if (session_info_->benchmark_info.has_value()) {
     return session_info_->benchmark_info.value();
@@ -230,6 +280,14 @@ absl::StatusOr<BenchmarkInfo> SessionAdvanced::GetBenchmarkInfo() {
   return absl::InternalError(
       "Benchmark is not enabled. Please make sure the BenchmarkParams is set "
       "in the EngineSettings.");
+}
+
+absl::StatusOr<BenchmarkInfo*> SessionAdvanced::GetMutableBenchmarkInfo() {
+  auto execution_manager_lock = execution_manager_.lock();
+  if (execution_manager_lock == nullptr) {
+    return absl::FailedPreconditionError("Execution manager is not available.");
+  }
+  return execution_manager_lock->GetMutableBenchmarkInfo(session_id_);
 }
 
 absl::StatusOr<std::unique_ptr<Engine::Session>> SessionAdvanced::Clone(

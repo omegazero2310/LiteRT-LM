@@ -72,7 +72,8 @@ int TryGetMaxNumTokens(const LlmExecutor& executor) {
 
 // Check whether the decoding loop should stop.
 bool ShouldStop(bool hit_stop_tokens, int benchmark_decode_token_count,
-                int num_decoded_steps, int current_step, int max_num_tokens) {
+                int num_decoded_steps, int current_step, int max_num_tokens,
+                int max_output_tokens) {
   // Stopping conditions.
   if (hit_stop_tokens && benchmark_decode_token_count == 0) {
     // Only early stop if no decode step
@@ -85,6 +86,9 @@ bool ShouldStop(bool hit_stop_tokens, int benchmark_decode_token_count,
     return true;
   } else if (current_step >= max_num_tokens) {
     // Reaching maximum number of kv-cache size.
+    return true;
+  } else if (num_decoded_steps >= max_output_tokens) {
+    // Reaching maximum number of output tokens.
     return true;
   }
   return false;
@@ -368,7 +372,7 @@ absl::StatusOr<Responses> Decode(
     std::optional<Sampler*> sampler, Constraint* constraint,
     std::optional<litert::TensorBuffer> decoded_ids,
     absl::AnyInvocable<void(absl::StatusOr<Responses>)>& callback,
-    std::atomic<bool>* cancelled) {
+    std::atomic<bool>* cancelled, int max_output_tokens) {
   const bool is_streaming = callback != nullptr;
   const bool is_custom_sampling = sampler.has_value();
 
@@ -405,6 +409,21 @@ absl::StatusOr<Responses> Decode(
         // If the process is cancelled, we need to end this benchmark phase.
         RETURN_IF_ERROR(benchmark_info->TimeDecodeTurnEnd(
             num_decode_steps * num_output_candidates));
+      }
+      if (is_custom_sampling) {
+        // For external sampling, the sampled tokens are provided by the
+        // sampler. We must run one prefill to add the last token as pending
+        // token in the LLM Executor when cancellation happens.
+        LITERT_ASSIGN_OR_RETURN(auto duplicated_decoded_ids,
+                                decoded_ids->Duplicate());
+        ExecutorInputs inputs;
+        inputs.SetTextData(ExecutorTextData(std::move(duplicated_decoded_ids)));
+        std::optional<BenchmarkInfo> unused_benchmark_info;
+        auto status = Prefill(executor, inputs, /*wait_for_completion=*/true,
+                              unused_benchmark_info);
+        if (!status.ok()) {
+          return status.status();
+        }
       }
       return absl::CancelledError("Process cancelled.");
     }
@@ -458,7 +477,8 @@ absl::StatusOr<Responses> Decode(
     }
 
     if (ShouldStop(*all_done, benchmark_decode_token_count, num_decode_steps,
-                   executor.GetCurrentStep().value(), max_num_tokens)) {
+                   executor.GetCurrentStep().value(), max_num_tokens,
+                   max_output_tokens)) {
       break;
     }
   }

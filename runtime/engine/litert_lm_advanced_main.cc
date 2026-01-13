@@ -49,8 +49,7 @@
 ABSL_FLAG(std::string, backend, "gpu",
           "Executor backend to use for LLM execution (cpu, gpu, etc.)");
 ABSL_FLAG(std::string, model_path, "", "Model path to use for LLM execution.");
-ABSL_FLAG(std::string, input_prompt,
-          "What is the tallest building in the world?",
+ABSL_FLAG(std::string, input_prompt, "",
           "Input prompt to use for testing LLM execution.");
 ABSL_FLAG(std::string, input_prompt_file, "", "File path to the input prompt.");
 ABSL_FLAG(int, prefill_chunk_size, -1,
@@ -60,6 +59,11 @@ ABSL_FLAG(int, prefill_chunk_size, -1,
           "input length of 300 results in 3 chunks: 128, 128, and 44 tokens. "
           "A value of -1 disables chunking. Only supported by the dynamic "
           "executor.");
+ABSL_FLAG(bool, use_session, false,
+          "If true, use Session instead of Conversation to run inference. "
+          "Note that session does not use Jinja templates. As such, if using "
+          "Jinja in LLM Metadata, the user is responsible for manually "
+          "applying the prompt template to the input prompt.");
 
 namespace {
 
@@ -82,7 +86,8 @@ std::string GetInputPrompt() {
   const std::string input_prompt_file = absl::GetFlag(FLAGS_input_prompt_file);
   if (!input_prompt.empty() && !input_prompt_file.empty()) {
     ABSL_LOG(FATAL) << "Only one of --input_prompt and --input_prompt_file can "
-                       "be specified.";
+                       "be specified. Currently both are specified as "
+                    << input_prompt << " and " << input_prompt_file;
   }
   if (!input_prompt.empty()) {
     return input_prompt;
@@ -190,8 +195,9 @@ absl::Status MainHelper(int argc, char** argv) {
   settings.convert_weights_on_gpu = absl::GetFlag(FLAGS_convert_weights_on_gpu);
   settings.optimize_shader_compilation =
       absl::GetFlag(FLAGS_optimize_shader_compilation);
-  settings.share_constant_tensors =
-      absl::GetFlag(FLAGS_share_constant_tensors);
+  settings.share_constant_tensors = absl::GetFlag(FLAGS_share_constant_tensors);
+  settings.use_session = absl::GetFlag(FLAGS_use_session);
+  settings.num_iterations = absl::GetFlag(FLAGS_num_iterations);
 
   // Adjust max_num_tokens and prefill_batch_size if not set on benchmark mode.
   if (settings.benchmark && settings.benchmark_prefill_tokens > 0) {

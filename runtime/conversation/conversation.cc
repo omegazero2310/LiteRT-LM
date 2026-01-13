@@ -29,6 +29,8 @@
 #include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "absl/strings/string_view.h"  // from @com_google_absl
 #include "absl/synchronization/mutex.h"  // from @com_google_absl
+#include "absl/time/clock.h"  // from @com_google_absl
+#include "absl/time/time.h"  // from @com_google_absl
 #include "nlohmann/json.hpp"  // from @nlohmann_json
 #include "runtime/components/prompt_template.h"
 #include "runtime/conversation/internal_callback_util.h"
@@ -87,9 +89,9 @@ absl::StatusOr<ConversationConfig> ConversationConfig::CreateDefault(
     ABSL_LOG(INFO) << "Overwrite prompt template is not provided, using the "
                       "default template from the model metadata.";
   }
-  return CreateFromSessionConfig(engine, session_config, preface,
-                                 overwrite_processor_config,
-                                 enable_constrained_decoding);
+  return CreateFromSessionConfig(
+      engine, session_config, preface, overwrite_processor_config,
+      enable_constrained_decoding, prefill_preface_on_init);
 }
 
 absl::StatusOr<ConversationConfig> ConversationConfig::CreateFromSessionConfig(
@@ -210,7 +212,8 @@ absl::StatusOr<DecodeConfig> Conversation::CreateDecodeConfig() {
 }
 
 absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
-    const Engine& engine, const ConversationConfig& config) {
+    Engine& engine, const ConversationConfig& config) {
+  absl::Time start_time = absl::Now();
   if (!std::holds_alternative<JsonPreface>(config.GetPreface())) {
     return absl::InvalidArgumentError("Only JsonPreface is supported for now.");
   }
@@ -238,8 +241,18 @@ absl::StatusOr<std::unique_ptr<Conversation>> Conversation::Create(
                          single_turn_text,
                          std::get<JsonPreface>(config.GetPreface()).messages,
                          std::monostate()));
-    RETURN_IF_ERROR(conversation->session_->RunPrefill(session_inputs));
+    if (!session_inputs.empty()) {
+      RETURN_IF_ERROR(conversation->session_->RunPrefill(session_inputs));
+    }
   }
+
+  if (engine.GetEngineSettings().IsBenchmarkEnabled()) {
+    ASSIGN_OR_RETURN(BenchmarkInfo * benchmark_info,
+                     conversation->GetMutableBenchmarkInfo());
+    RETURN_IF_ERROR(benchmark_info->InitPhaseRecord(
+        BenchmarkInfo::InitPhase::kConversation, absl::Now() - start_time));
+  }
+
   return conversation;
 }
 
@@ -339,6 +352,10 @@ absl::Status Conversation::SendMessageAsync(
 
 absl::StatusOr<BenchmarkInfo> Conversation::GetBenchmarkInfo() {
   return session_->GetBenchmarkInfo();
+}
+
+absl::StatusOr<BenchmarkInfo*> Conversation::GetMutableBenchmarkInfo() {
+  return session_->GetMutableBenchmarkInfo();
 }
 
 void Conversation::CancelProcess() { session_->CancelProcess(); }
