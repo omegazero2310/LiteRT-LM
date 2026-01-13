@@ -2,6 +2,22 @@
 
 C# bindings for the LiteRT-LM library, providing on-device language model inference with a native C# API.
 
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+  - [Windows Setup](#windows-setup)
+  - [Linux Setup](#linux-setup)
+  - [macOS Setup](#macos-setup)
+- [Building](#building)
+- [Quick Start](#quick-start)
+- [Complete Examples](#complete-examples)
+- [API Reference](#api-reference)
+- [Platform-Specific Notes](#platform-specific-notes)
+- [Troubleshooting](#troubleshooting)
+- [Performance Tips](#performance-tips)
+
 ## Overview
 
 This package provides C# bindings for LiteRT-LM through P/Invoke, allowing you to run language models on-device in .NET applications. The API is designed to be idiomatic C# while maintaining feature parity with the Java/JNI implementation.
@@ -18,69 +34,225 @@ This package provides C# bindings for LiteRT-LM through P/Invoke, allowing you t
 
 ## Requirements
 
-- .NET 6.0 or later
-- Bazel (for building)
-- C++17 compatible compiler
-- LiteRT-LM C++ library
+- **.NET**: 6.0 or later
+- **Bazelisk**: Bazel version manager
+- **C++ Compiler**: C++17 compatible
+- **LiteRT-LM**: C++ library (included in build)
+
+### Platform-Specific Requirements
+
+**Windows:**
+- Visual Studio Build Tools 2022 with VC++ tools
+- Git for Windows
+
+**Linux:**
+- GCC 7+ or Clang 5+
+- Build essentials
+
+**macOS:**
+- Xcode Command Line Tools
+
+## Installation
+
+### Windows Setup
+
+#### Step 1: Install Chocolatey (Package Manager)
+
+Open PowerShell as Administrator and run:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```
+
+#### Step 2: Install Required Tools
+
+```powershell
+# Install Git and Python
+choco install git python3 -y
+
+# Install Visual Studio Build Tools with VC++ components
+choco install visualstudio2022buildtools -y
+choco install visualstudio2022-workload-vctools -y
+
+# Install Bazelisk
+choco install bazelisk -y
+```
+
+**Alternative: Manual Installation**
+
+If you prefer manual installation:
+
+1. **Bazelisk**: Download from [GitHub releases](https://github.com/bazelbuild/bazelisk/releases)
+   - Download `bazelisk-windows-amd64.exe`
+   - Rename to `bazel.exe`
+   - Add to your PATH
+
+2. **Visual Studio Build Tools**: Download from [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/)
+   - Run installer
+   - Select "Desktop development with C++"
+   - Ensure "MSVC v143 - VS 2022 C++ x64/x86 build tools" is checked
+   - Install
+
+3. **Git**: Download from [git-scm.com](https://git-scm.com/download/win)
+
+#### Step 3: Configure Environment Variables
+
+Open PowerShell and run:
+
+```powershell
+# Set BAZEL_VC to Visual Studio VC folder
+[System.Environment]::SetEnvironmentVariable("BAZEL_VC", "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC", "User")
+
+# Set BAZEL_SH to Git bash.exe
+[System.Environment]::SetEnvironmentVariable("BAZEL_SH", "C:\Program Files\Git\bin\bash.exe", "User")
+
+# Refresh environment variables in current session
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+```
+
+#### Step 4: Fix Windows Long Path Issue
+
+Windows has a 260-character path length limit that can cause build issues. Create or edit `.bazelrc` in your project root:
+
+```bash
+# .bazelrc
+# Move Bazel output to shorter path to avoid Windows path length limitations
+startup --output_user_root=D:/_bzl
+```
+
+**Note:** You can change `D:/_bzl` to any short path on your system (e.g., `C:/_bzl`).
+
+#### Step 5: Verify Installation
+
+```powershell
+# Check Bazel
+bazel --version
+
+# Check Visual Studio compiler
+where cl.exe
+
+# Check Git
+git --version
+
+# Check Python
+python --version
+```
+
+### Linux Setup
+
+#### Ubuntu/Debian
+
+```bash
+# Install Bazelisk
+sudo wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+sudo chmod +x /usr/local/bin/bazel
+
+# Install build dependencies
+sudo apt-get update
+sudo apt-get install build-essential git python3 -y
+
+# Install .NET SDK (if not installed)
+wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+chmod +x dotnet-install.sh
+./dotnet-install.sh --channel 8.0
+```
+
+#### Fedora/RHEL
+
+```bash
+# Install Bazelisk
+sudo wget -O /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+sudo chmod +x /usr/local/bin/bazel
+
+# Install build dependencies
+sudo dnf install gcc-c++ git python3 -y
+```
+
+### macOS Setup
+
+```bash
+# Install Homebrew (if not installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Bazelisk
+brew install bazelisk
+
+# Install Xcode Command Line Tools
+xcode-select --install
+
+# Install .NET SDK (if not installed)
+brew install --cask dotnet-sdk
+```
 
 ## Building
 
-### 1. Add to WORKSPACE
+### 1. Build the Library
 
-Add the following to your `WORKSPACE` file:
-
-```python
-http_archive(
-    name = "rules_dotnet",
-    sha256 = "...",
-    strip_prefix = "rules_dotnet-0.15.1",
-    urls = ["https://github.com/bazelbuild/rules_dotnet/archive/v0.15.1.tar.gz"],
-)
-
-load("@rules_dotnet//dotnet:repositories.bzl", "dotnet_register_toolchains", "rules_dotnet_dependencies")
-
-rules_dotnet_dependencies()
-dotnet_register_toolchains(name = "dotnet", dotnet_version = "8.0.100")
-```
-
-### 2. Build the Library
-
-> Note: In order to run on GPU on all platforms, we need to take extra steps:
->
-> 1. Add `--define=litert_link_capi_so=true`
-  `--define=resolve_symbols_in_exec=false` in the build command.
-> 2. `mkdir -p <test_dir>; cp <your litert_lm_main> <test_dir>; cp ./prebuilt/<your OS>/<shared libaries> <test_dir>/`
- and make sure the prebuilt .so/.dll/.dylib files are in the same directory as
-  `litert_lm_main` binary
-> 3. Running GPU on Windows needs DirectXShaderCompiler. See
- [this Note](#windows_gpu) for more details.
-
+#### CPU Mode (Default)
 
 ```bash
-# Build the C++ native library
+# Build the native C++ library
 bazel build //csharp:litertlm_csharp
 
-# Build the C# library
+# Build the C# assembly
 bazel build //csharp:LiteRtLm
 
 # Run examples
 bazel run //csharp:LiteRtLm_Example
-
-# If the example program throw exception (dll not found) do this
-# Install the tool
-sudo apt update && sudo apt install patchelf
-
-# Set the search path (RPATH) for the main library
-# The single quotes around $ORIGIN are CRITICAL so the shell doesn't change it
-patchelf --set-rpath '$ORIGIN' liblitertlm_csharp.so
-
-# Now verify it with ldd
-ldd liblitertlm_csharp.so
 ```
 
-### 3. Using in Your Project
+#### GPU Mode
 
-Reference the built assembly in your C# project:
+To enable GPU support, add the `use_gpu` define:
+
+```bash
+# Build with GPU support
+bazel build --define=use_gpu=true //csharp:litertlm_csharp
+bazel build --define=use_gpu=true //csharp:LiteRtLm
+
+# Run with GPU support
+bazel run --define=use_gpu=true //csharp:LiteRtLm_Example
+```
+
+
+#### Build Output Location
+
+After building, the compiled libraries will be located at:
+
+```
+bazel-bin/csharp/LiteRtLm.dll                      # C# assembly
+bazel-bin/csharp/litertlm_csharp.dll (.so/.dylib)  # Native library
+```
+
+### 2. Using in Your Project
+
+#### Option 1: Direct Reference
+
+Copy the built files to your project and reference them:
+
+```bash
+# Copy libraries to your project
+cp bazel-bin/csharp/LiteRtLm.dll ./MyProject/libs/
+cp bazel-bin/csharp/litertlm_csharp.dll ./MyProject/libs/
+```
+
+Reference in your `.csproj`:
+
+```xml
+<ItemGroup>
+  <Reference Include="LiteRtLm">
+    <HintPath>libs/LiteRtLm.dll</HintPath>
+  </Reference>
+</ItemGroup>
+```
+
+Make sure the native library (`litertlm_csharp.dll`/`.so`/`.dylib`) is in your application's runtime directory or system library path.
+
+#### Option 2: Using from Bazel Output
+
+Reference directly from Bazel output:
 
 ```xml
 <ItemGroup>
@@ -89,8 +261,6 @@ Reference the built assembly in your C# project:
   </Reference>
 </ItemGroup>
 ```
-
-Make sure the native library (`litertlm_csharp.dll`/`.so`/`.dylib`) is in your application's runtime path.
 
 ## Quick Start
 
@@ -101,7 +271,7 @@ using Google.AI.Edge.LiteRtLm;
 
 // Create an engine
 using var engine = new Engine(
-    modelPath: "path/to/model.tflite",
+    modelPath: "path/to/model.litertlm",
     backend: "cpu",
     maxNumTokens: 2048);
 
@@ -135,20 +305,11 @@ session.GenerateContentStream(
 ### Multi-turn Conversation
 
 ```csharp
-string systemInstruction = @"{
-    ""role"": ""system"",
-    ""content"": ""You are a helpful assistant.""
-}";
-
 using var conversation = engine.CreateConversation(
-    systemMessageJson: systemInstruction);
+    samplerConfig: new SamplerConfig { Temperature = 0.7 });
 
-// Send messages
-string userMsg = @"{
-    ""role"": ""user"",
-    ""content"": ""Hello!""
-}";
-
+// Send messages in JSON format
+string userMsg = @"{""role"":""user"",""content"":""Hello!""}";
 string response = conversation.SendMessage(userMsg);
 Console.WriteLine(response);
 ```
@@ -157,7 +318,8 @@ Console.WriteLine(response);
 
 ```csharp
 using var engine = new Engine(
-    modelPath: "path/to/multimodal_model.tflite",
+    modelPath: "path/to/multimodal_model.litertlm",
+    backend: "cpu",
     visionBackend: "gpu");
 
 using var session = engine.CreateSession();
@@ -171,6 +333,306 @@ var inputs = new InputData[]
 };
 
 string response = session.GenerateContent(inputs);
+```
+
+## Complete Examples
+
+### Example 1: Simple Text Generation
+
+```csharp
+using System;
+using Google.AI.Edge.LiteRtLm;
+
+static void SimpleTextGeneration()
+{
+    Console.WriteLine("=== Simple Text Generation ===\n");
+
+    try
+    {
+        using var engine = new Engine(
+            modelPath: "D:/models/gemma-3n-E4B-it-int4.litertlm",
+            backend: "cpu",
+            maxNumTokens: 2048);
+
+        using var session = engine.CreateSession(
+            new SamplerConfig
+            {
+                TopK = 40,
+                TopP = 0.95,
+                Temperature = 0.8
+            });
+
+        var prompt = new InputData.Text("What is the capital of France?");
+        string response = session.GenerateContent(prompt);
+
+        Console.WriteLine($"Prompt: {((InputData.Text)prompt).Content}");
+        Console.WriteLine($"Response: {response}\n");
+    }
+    catch (LiteRtLmException ex)
+    {
+        Console.WriteLine($"Error (code {ex.StatusCode}): {ex.Message}");
+    }
+}
+```
+
+### Example 2: Streaming Generation
+
+```csharp
+using System.Threading;
+
+static void StreamingTextGeneration()
+{
+    Console.WriteLine("=== Streaming Text Generation ===\n");
+
+    try
+    {
+        using var engine = new Engine(
+            modelPath: "D:/models/gemma-3n-E4B-it-int4.litertlm",
+            backend: "cpu");
+
+        using var session = engine.CreateSession();
+
+        var prompt = new InputData.Text("Write a short story about a robot.");
+        
+        Console.WriteLine($"Prompt: {((InputData.Text)prompt).Content}");
+        Console.Write("Response: ");
+
+        var completionEvent = new ManualResetEvent(false);
+
+        session.GenerateContentStream(
+            inputs: new[] { prompt },
+            onResponse: (response) =>
+            {
+                Console.Write(response);
+            },
+            onComplete: () =>
+            {
+                Console.WriteLine("\n[Generation complete]");
+                completionEvent.Set();
+            },
+            onError: (code, message) =>
+            {
+                Console.WriteLine($"\n[Error {code}: {message}]");
+                completionEvent.Set();
+            });
+
+        // Wait for completion
+        completionEvent.WaitOne();
+        Console.WriteLine();
+    }
+    catch (LiteRtLmException ex)
+    {
+        Console.WriteLine($"Error (code {ex.StatusCode}): {ex.Message}");
+    }
+}
+```
+
+### Example 3: Multi-turn Conversation
+
+```csharp
+static void MultiTurnConversation()
+{
+    Console.WriteLine("=== Multi-turn Conversation ===\n");
+
+    try
+    {
+        using var engine = new Engine(
+            modelPath: "D:/models/gemma-3n-E4B-it-int4.litertlm",
+            backend: "cpu",
+            enableBenchmark: true);
+
+        using var conversation = engine.CreateConversation(
+            samplerConfig: new SamplerConfig { Temperature = 0.7 });
+
+        // Turn 1
+        string userMessage1 = @"{""role"":""user"",""content"":""What is machine learning?""}";
+
+        Console.WriteLine("User: What is machine learning?");
+        string response1 = conversation.SendMessage(userMessage1);
+        Console.WriteLine($"Assistant: {response1}\n");
+
+        // Turn 2
+        string userMessage2 = @"{""role"":""user"",""content"":""Can you give me an example?""}";
+
+        Console.WriteLine("User: Can you give me an example?");
+        string response2 = conversation.SendMessage(userMessage2);
+        Console.WriteLine($"Assistant: {response2}\n");
+
+        // Get benchmark info
+        var benchmarkInfo = conversation.GetBenchmarkInfo();
+        Console.WriteLine($"Benchmark Info:");
+        Console.WriteLine($"  Prefill tokens: {benchmarkInfo.PrefillTokenCount}");
+        Console.WriteLine($"  Decode tokens: {benchmarkInfo.DecodeTokenCount}\n");
+    }
+    catch (LiteRtLmException ex)
+    {
+        Console.WriteLine($"Error (code {ex.StatusCode}): {ex.Message}");
+    }
+}
+```
+
+### Example 4: Function Calling with Tools
+
+```csharp
+static void ConversationWithTools()
+{
+    Console.WriteLine("=== Conversation with Tools ===\n");
+
+    try
+    {
+        using var engine = new Engine(
+            modelPath: "D:/models/gemma-3n-E4B-it-int4.litertlm",
+            backend: "cpu");
+
+        string toolsJson = @"[
+            {
+                ""name"": ""get_weather"",
+                ""description"": ""Get the current weather for a location"",
+                ""parameters"": {
+                    ""type"": ""object"",
+                    ""properties"": {
+                        ""location"": {
+                            ""type"": ""string"",
+                            ""description"": ""The city and state, e.g. San Francisco, CA""
+                        }
+                    },
+                    ""required"": [""location""]
+                }
+            }
+        ]";
+
+        using var conversation = engine.CreateConversation(
+            toolsJson: toolsJson,
+            enableConstrainedDecoding: true);
+
+        var completionEvent = new ManualResetEvent(false);
+
+        string userMessage = @"{""role"":""user"",""content"":""What's the weather like in New York?""}";
+
+        Console.WriteLine("User: What's the weather like in New York?");
+        Console.Write("Assistant: ");
+
+        conversation.SendMessageAsync(
+            messageJson: userMessage,
+            onMessage: (message) =>
+            {
+                Console.WriteLine($"Received message chunk: {message}");
+            },
+            onComplete: () =>
+            {
+                Console.WriteLine("\n[Conversation turn complete]");
+                completionEvent.Set();
+            },
+            onError: (code, message) =>
+            {
+                Console.WriteLine($"\n[Error {code}: {message}]");
+                completionEvent.Set();
+            });
+
+        completionEvent.WaitOne();
+        Console.WriteLine();
+    }
+    catch (LiteRtLmException ex)
+    {
+        Console.WriteLine($"Error (code {ex.StatusCode}): {ex.Message}");
+    }
+}
+```
+
+### Example 5: Manual Prefill and Decode
+
+```csharp
+static void ManualPrefillDecode()
+{
+    Console.WriteLine("=== Manual Prefill and Decode ===\n");
+
+    try
+    {
+        using var engine = new Engine(
+            modelPath: "D:/models/gemma-3n-E4B-it-int4.litertlm",
+            backend: "cpu");
+
+        using var session = engine.CreateSession();
+
+        // Prefill phase
+        var prompt = new InputData.Text("The quick brown fox");
+        session.RunPrefill(prompt);
+        Console.WriteLine($"Prefilled with: {((InputData.Text)prompt).Content}");
+
+        // Decode phase - generate one token at a time
+        Console.Write("Generated tokens: ");
+        for (int i = 0; i < 10; i++)
+        {
+            string token = session.RunDecode();
+            Console.Write(token);
+            
+            // Add stopping conditions
+            if (token.Contains("."))
+            {
+                break;
+            }
+        }
+        Console.WriteLine("\n");
+    }
+    catch (LiteRtLmException ex)
+    {
+        Console.WriteLine($"Error (code {ex.StatusCode}): {ex.Message}");
+    }
+}
+```
+
+### Example 6: Cancelling Generation
+
+```csharp
+using System.Threading;
+
+static void CancelGeneration()
+{
+    Console.WriteLine("=== Cancel Generation ===\n");
+
+    try
+    {
+        using var engine = new Engine(
+            modelPath: "D:/models/gemma-3n-E4B-it-int4.litertlm",
+            backend: "cpu");
+
+        using var session = engine.CreateSession();
+
+        var cancelEvent = new ManualResetEvent(false);
+
+        var prompt = new InputData.Text("Write a very long story about space exploration.");
+
+        // Start generation
+        session.GenerateContentStream(
+            inputs: new[] { prompt },
+            onResponse: (response) =>
+            {
+                Console.Write(response);
+            },
+            onComplete: () =>
+            {
+                Console.WriteLine("\n[Generation complete]");
+                cancelEvent.Set();
+            },
+            onError: (code, message) =>
+            {
+                Console.WriteLine($"\n[Error or cancelled: {message}]");
+                cancelEvent.Set();
+            });
+
+        // Cancel after 2 seconds
+        Thread.Sleep(2000);
+        Console.WriteLine("\n[Cancelling generation...]");
+        session.CancelProcess();
+
+        cancelEvent.WaitOne();
+        Console.WriteLine();
+    }
+    catch (LiteRtLmException ex)
+    {
+        Console.WriteLine($"Error (code {ex.StatusCode}): {ex.Message}");
+    }
+}
 ```
 
 ## API Reference
@@ -203,11 +665,18 @@ public class Engine : IDisposable
 }
 ```
 
-**Backends**: `"cpu"`, `"gpu"`, `"npu"`
+**Parameters:**
+- `modelPath`: Path to the `.litertlm` model file
+- `backend`: Inference backend - `"cpu"`, `"gpu"`, or `"npu"`
+- `visionBackend`: Backend for vision models (optional)
+- `audioBackend`: Backend for audio models (optional)
+- `maxNumTokens`: Maximum number of tokens to generate (0 = no limit)
+- `cacheDir`: Directory to cache compiled models
+- `enableBenchmark`: Enable performance benchmarking
 
 ### Session
 
-For single-turn or manual generation control.
+For single-turn generation or manual control.
 
 ```csharp
 public class Session : IDisposable
@@ -225,6 +694,13 @@ public class Session : IDisposable
     public void CancelProcess();
 }
 ```
+
+**Methods:**
+- `RunPrefill`: Process input and prepare for generation
+- `RunDecode`: Generate one token at a time
+- `GenerateContent`: Generate complete response (blocking)
+- `GenerateContentStream`: Generate response with streaming callbacks
+- `CancelProcess`: Cancel ongoing generation
 
 ### Conversation
 
@@ -246,6 +722,14 @@ public class Conversation : IDisposable
 }
 ```
 
+**Message Format (JSON):**
+```json
+{
+    "role": "user",
+    "content": "Your message here"
+}
+```
+
 ### InputData
 
 Polymorphic input types for different modalities.
@@ -256,6 +740,7 @@ public abstract class InputData
     public class Text : InputData
     {
         public Text(string content);
+        public string Content { get; }
     }
 
     public class Audio : InputData
@@ -284,6 +769,12 @@ public class SamplerConfig
 }
 ```
 
+**Parameters:**
+- `TopK`: Top-k sampling (40 recommended)
+- `TopP`: Nucleus sampling threshold (0.95 recommended)
+- `Temperature`: Sampling temperature (0.8 = balanced, lower = more focused)
+- `Seed`: Random seed for reproducibility (0 = random)
+
 ### LogSeverity
 
 ```csharp
@@ -299,109 +790,240 @@ public enum LogSeverity
 }
 ```
 
-## Error Handling
+### BenchmarkInfo
 
-All methods that can fail will throw `LiteRtLmException`:
-
-```csharp
-try
-{
-    using var engine = new Engine("model.tflite");
-    // ... use engine
-}
-catch (LiteRtLmException ex)
-{
-    Console.WriteLine($"LiteRT-LM error (code {ex.StatusCode}): {ex.Message}");
-}
-```
-
-## Performance Tips
-
-1. **Reuse Engine and Session**: Creating these is expensive, reuse them when possible
-2. **Enable Benchmarking**: Set `enableBenchmark: true` to measure performance
-3. **Use Appropriate Backend**: GPU for large models, CPU for small/mobile models
-4. **Cache Directory**: Set `cacheDir` to speed up repeated loads
-5. **Manage Token Limits**: Set `maxNumTokens` to control memory usage
-
-## Thread Safety
-
-- `Engine` instances are thread-safe for creating sessions/conversations
-- `Session` and `Conversation` instances are **not** thread-safe
-- Each thread should have its own `Session` or `Conversation` instance
-- Callbacks are invoked on background threads, marshal to UI thread if needed
-
-## Memory Management
-
-All classes implement `IDisposable`. Always use `using` statements or call `Dispose()`:
+Performance metrics for conversation.
 
 ```csharp
-using (var engine = new Engine("model.tflite"))
-using (var session = engine.CreateSession())
+public class BenchmarkInfo
 {
-    // Use session
-} // Automatically disposed
+    public int PrefillTokenCount { get; }
+    public int DecodeTokenCount { get; }
+}
 ```
 
 ## Platform-Specific Notes
 
 ### Windows
-- The native library is named `litertlm_csharp.dll`
-- Place it in the same directory as your executable or in the system PATH
+
+**Native Library:** `litertlm_csharp.dll`
+
+**Deployment:**
+1. Copy `litertlm_csharp.dll` to your application's directory
+2. Or add to system PATH
+3. Ensure Visual C++ Runtime is installed
+
+**GPU Support:**
+- Requires CUDA-compatible GPU
+- Install appropriate CUDA toolkit
 
 ### Linux
-- The native library is named `litertlm_csharp.so`
-- Set `LD_LIBRARY_PATH` if not in a standard location
+
+**Native Library:** `litertlm_csharp.so`
+
+**Deployment:**
+```bash
+# Option 1: Copy to application directory
+cp litertlm_csharp.so /path/to/your/app/
+
+# Option 2: Set library path
+export LD_LIBRARY_PATH=/path/to/lib:$LD_LIBRARY_PATH
+
+# Option 3: Install system-wide
+sudo cp litertlm_csharp.so /usr/local/lib/
+sudo ldconfig
+```
+
+**GPU Support:**
+- Install NVIDIA drivers
+- Install CUDA toolkit
 
 ### macOS
-- The native library is named `litertlm_csharp.dylib`
-- Set `DYLD_LIBRARY_PATH` if needed
 
-## Examples
+**Native Library:** `litertlm_csharp.dylib`
 
-See `Example.cs` for comprehensive examples including:
-- Simple text generation
-- Streaming generation
-- Multi-turn conversations
-- Function calling with tools
-- Multimodal inputs
-- Manual prefill/decode control
-- Cancellation handling
+**Deployment:**
+```bash
+# Option 1: Copy to application directory
+cp litertlm_csharp.dylib /path/to/your/app/
+
+# Option 2: Set library path
+export DYLD_LIBRARY_PATH=/path/to/lib:$DYLD_LIBRARY_PATH
+```
+
+**GPU Support:**
+- Use Metal backend for Apple Silicon
+- Specify `backend: "gpu"` in Engine constructor
 
 ## Troubleshooting
 
-### DllNotFoundException
+### DllNotFoundException / Library Not Found
 
-If you get `DllNotFoundException`, ensure:
-1. The native library is built: `bazel build //csharp:litertlm_csharp`
-2. It's in your application's directory or system library path
-3. All dependencies (TensorFlow Lite, etc.) are available
+**Windows:**
+```powershell
+# Verify library exists
+dir bazel-bin\csharp\litertlm_csharp.dll
 
-### Memory Access Violations
+# Copy to application directory
+copy bazel-bin\csharp\litertlm_csharp.dll .\MyApp\bin\Debug\net8.0\
+```
 
-- Ensure you're not using disposed objects
-- Don't access sessions/conversations from multiple threads
-- Keep callback delegates alive during async operations (use `GC.KeepAlive`)
+**Linux/macOS:**
+```bash
+# Verify library exists
+ls bazel-bin/csharp/litertlm_csharp.so
+
+# Check dependencies
+ldd bazel-bin/csharp/litertlm_csharp.so  # Linux
+otool -L bazel-bin/csharp/litertlm_csharp.dylib  # macOS
+
+# Set library path
+export LD_LIBRARY_PATH=$(pwd)/bazel-bin/csharp:$LD_LIBRARY_PATH
+```
+
+### Build Errors on Windows
+
+**Error: "BAZEL_VC not set"**
+```powershell
+[System.Environment]::SetEnvironmentVariable("BAZEL_VC", "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC", "User")
+```
+
+**Error: "Path too long"**
+```bash
+# Add to .bazelrc
+startup --output_user_root=C:/_bzl
+```
+
+**Error: "cl.exe not found"**
+```powershell
+# Reinstall VC++ tools
+choco install visualstudio2022-workload-vctools -y --force
+```
 
 ### Model Loading Errors
 
-- Verify the model file exists and is readable
-- Check the model is compatible with LiteRT-LM
-- Ensure sufficient memory is available
+**Error: "Failed to load model"**
+- Verify file exists: `ls path/to/model.litertlm`
+- Check file permissions
+- Ensure sufficient memory available
+- Verify model format is compatible
 
-## Contributing
+**Error: "Out of memory"**
+- Reduce `maxNumTokens` in Engine constructor
+- Use quantized models (int4/int8)
+- Close other applications
 
-Contributions are welcome! Please ensure:
-- Code follows C# naming conventions
-- All public APIs are documented
-- Error handling is consistent
-- Memory is properly managed
+### Memory Access Violations
 
-## License
+- Don't use disposed objects
+- Don't access sessions from multiple threads
+- Keep callback delegates alive with `GC.KeepAlive(callback)`
+- Always use `using` statements for proper disposal
 
-Licensed under the Apache License, Version 2.0. See LICENSE for details.
+### Performance Issues
 
-## Related Projects
+1. **Slow first run**: Model compilation occurs on first load
+   - Solution: Set `cacheDir` parameter
+   
+2. **Slow generation**: Wrong backend selected
+   - Solution: Use GPU backend for large models
+   
+3. **High memory usage**: Token limit too high
+   - Solution: Set appropriate `maxNumTokens`
 
-- [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) - Main C++ library
-- [MediaPipe](https://github.com/google/mediapipe) - ML inference framework
-- [TensorFlow Lite](https://www.tensorflow.org/lite) - Lightweight ML framework
+## Performance Tips
+
+1. **Reuse Engine and Session**: Creating these is expensive, reuse when possible
+
+2. **Enable Benchmarking**: 
+   ```csharp
+   var engine = new Engine(modelPath, enableBenchmark: true);
+   ```
+
+3. **Use Appropriate Backend**:
+   - CPU: Small models, mobile devices
+   - GPU: Large models, desktop/server
+   - NPU: Dedicated AI accelerators
+
+4. **Set Cache Directory**:
+   ```csharp
+   var engine = new Engine(modelPath, cacheDir: "./cache");
+   ```
+
+5. **Optimize Sampler Config**:
+   ```csharp
+   var config = new SamplerConfig 
+   {
+       Temperature = 0.7,  // Lower = more focused
+       TopK = 20,          // Smaller = faster
+       TopP = 0.9          // Higher = more diverse
+   };
+   ```
+
+6. **Manage Token Limits**:
+   ```csharp
+   var engine = new Engine(modelPath, maxNumTokens: 1024);
+   ```
+
+## Thread Safety
+
+- **Engine**: Thread-safe for creating sessions/conversations
+- **Session**: NOT thread-safe - use one per thread
+- **Conversation**: NOT thread-safe - use one per thread
+- **Callbacks**: Invoked on background threads - marshal to UI thread if needed
+
+**Example: Thread-safe usage**
+```csharp
+using var engine = new Engine(modelPath);
+
+// Create separate sessions for each thread
+var tasks = Enumerable.Range(0, 4).Select(i => Task.Run(() =>
+{
+    using var session = engine.CreateSession();
+    var prompt = new InputData.Text($"Tell me about topic {i}");
+    return session.GenerateContent(prompt);
+}));
+
+var results = await Task.WhenAll(tasks);
+```
+
+## Memory Management
+
+All classes implement `IDisposable`. Always use `using` statements:
+
+```csharp
+// Good - automatic disposal
+using (var engine = new Engine("model.litertlm"))
+using (var session = engine.CreateSession())
+{
+    // Use session
+} // Automatically disposed
+
+// Also good - using declarations (C# 8.0+)
+using var engine = new Engine("model.litertlm");
+using var session = engine.CreateSession();
+// Use session
+// Disposed at end of scope
+```
+
+## Error Handling
+
+All methods that can fail throw `LiteRtLmException`:
+
+```csharp
+try
+{
+    using var engine = new Engine("model.litertlm");
+    using var session = engine.CreateSession();
+    var response = session.GenerateContent(new InputData.Text("Hello"));
+}
+catch (LiteRtLmException ex)
+{
+    Console.WriteLine($"LiteRT-LM error (code {ex.StatusCode}): {ex.Message}");
+    // Handle error appropriately
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Unexpected error: {ex.Message}");
+}
+```
